@@ -1,0 +1,5 @@
+username,sourceHost,destHost,homeDir,diskUsageMb,destUser
+acmeshop,src1.example-hosting.internal,dst1.example-hosting.internal,/home/acmeshop,12400,
+blogtest,src1.example-hosting.internal,dst2.example-hosting.internal,/home/blogtest,320,
+mailhost1,src2.example-hosting.internal,dst1.example-hosting.internal,/home/mailhost1,4850,mailhost1_new
+photosite,src2.example-hosting.internal,dst2.example-hosting.internal,/home/photosite,900,

@@ -1,0 +1,5 @@
+[
+  { "host": "example.com", "port": 443 },
+  { "host": "shop.example.com", "port": 443 },
+  { "host": "mail.example.net" }
+]

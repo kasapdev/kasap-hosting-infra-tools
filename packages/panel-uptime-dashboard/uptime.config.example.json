@@ -1,0 +1,20 @@
+[
+  {
+    "name": "cpanel-web1",
+    "type": "http",
+    "url": "https://panel.example.com:2083",
+    "timeoutMs": 5000
+  },
+  {
+    "name": "site-example-com",
+    "type": "http",
+    "url": "https://www.example.com"
+  },
+  {
+    "name": "mc-survival",
+    "type": "tcp",
+    "host": "mc.example.com",
+    "port": 25565,
+    "timeoutMs": 3000
+  }
+]
