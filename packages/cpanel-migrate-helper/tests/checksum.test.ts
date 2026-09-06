@@ -57,4 +57,30 @@ describe("checksum", () => {
     await writeFile(filePath, "mutated content", "utf8");
     expect(await verifyChecksumFile(filePath, checksumFilePath)).toBe(false);
   });
+
+  it("verifies a checksum file with an upper-case digest case-insensitively", async () => {
+    const dir = await makeTempDir();
+    const filePath = join(dir, "payload.bin");
+    await writeFile(filePath, "original content", "utf8");
+
+    const digest = await computeMd5(filePath);
+    const checksumFilePath = join(dir, "payload.bin.md5");
+    await writeFile(checksumFilePath, `${digest.toUpperCase()}  payload.bin\n`, "utf8");
+
+    expect(await verifyChecksumFile(filePath, checksumFilePath)).toBe(true);
+  });
+
+  it("returns false (not throws) when the checksum file is empty or blank", async () => {
+    const dir = await makeTempDir();
+    const filePath = join(dir, "payload.bin");
+    await writeFile(filePath, "original content", "utf8");
+
+    const emptyChecksumFilePath = join(dir, "empty.md5");
+    await writeFile(emptyChecksumFilePath, "", "utf8");
+    expect(await verifyChecksumFile(filePath, emptyChecksumFilePath)).toBe(false);
+
+    const blankChecksumFilePath = join(dir, "blank.md5");
+    await writeFile(blankChecksumFilePath, "   \n", "utf8");
+    expect(await verifyChecksumFile(filePath, blankChecksumFilePath)).toBe(false);
+  });
 });

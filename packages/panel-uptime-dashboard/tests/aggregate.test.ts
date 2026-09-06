@@ -72,4 +72,22 @@ describe("sparkline", () => {
     expect(result[0]).toBe("▁");
     expect(result[1]).toBe("█");
   });
+
+  it("renders the tallest bar for up checks with no responseTimeMs at all", () => {
+    // No entry has a numeric responseTimeMs, so min/max/range are all 0 and
+    // every up check falls into the range===0 branch (tallest bar), never "_".
+    const checks: CheckRecord[] = [{ up: true }, { up: true, responseTimeMs: null }];
+    const result = sparkline(checks);
+    expect(result).toBe("██");
+  });
+
+  it("falls back missing responseTimeMs to the window minimum when other checks have data", () => {
+    // Documents current behavior: an up check with no responseTimeMs is
+    // treated as tying the fastest response in the window, not as "unknown".
+    const checks: CheckRecord[] = [up(0), { up: true }, up(100)];
+    const result = sparkline(checks);
+    expect(result[0]).toBe("▁");
+    expect(result[1]).toBe("▁");
+    expect(result[2]).toBe("█");
+  });
 });

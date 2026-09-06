@@ -49,6 +49,15 @@ describe("parseAccountsCsv", () => {
     const badCsv = "username,sourceHost,destHost,homeDir,diskUsageMb\nfoo,src,dst,/home/foo,not-a-number\n";
     expect(() => parseAccountsCsv(badCsv)).toThrow();
   });
+
+  it("throws on completely empty CSV text", () => {
+    expect(() => parseAccountsCsv("")).toThrow(/empty/);
+    expect(() => parseAccountsCsv("   \n\n  ")).toThrow(/empty/);
+  });
+
+  it("returns an empty array for a header-only CSV (no data rows)", () => {
+    expect(parseAccountsCsv("username,sourceHost,destHost,homeDir,diskUsageMb\n")).toEqual([]);
+  });
 });
 
 describe("parseAccountsJson", () => {
@@ -112,5 +121,18 @@ describe("formatRunbookText / formatRunbookJson", () => {
     expect(Array.isArray(parsed.steps)).toBe(true);
     expect(parsed.steps).toHaveLength(steps.length);
     expect(parsed.stepCount).toBe(steps.length);
+  });
+
+  it("renders a no-accounts message (not a blank/broken runbook) for zero steps", () => {
+    const text = formatRunbookText([]);
+    expect(text).toContain("No accounts to migrate.");
+    expect(text.toLowerCase()).toContain("reminder");
+  });
+
+  it("produces valid JSON with stepCount 0 and an empty steps array for zero steps", () => {
+    const json = formatRunbookJson([]);
+    const parsed = JSON.parse(json) as { stepCount: number; steps: unknown[] };
+    expect(parsed.stepCount).toBe(0);
+    expect(parsed.steps).toEqual([]);
   });
 });
