@@ -69,6 +69,60 @@ node packages/panel-uptime-dashboard/dist/cli.js
 - `sparkline` renders down checks as `_`, and up checks as a block character scaled by
   response time relative to the min/max seen in the recent window (fastest = shortest bar).
 
+## Incident history
+
+Beyond the live `uptimePercent` summary, the package computes discrete **incidents** —
+each contiguous run of down checks — from a target's stored check history. This turns
+"is it up right now" into "when did it go down, when did it come back, and how long
+was that": exactly what you need for an incident report or an SLA calculation.
+
+`incidentHistory(checks)` (exported from `src/aggregate.ts`) takes checks ordered
+oldest-first (each requiring a `checkedAt` timestamp — this is the one aggregate
+function where timestamps aren't optional, since duration is meaningless without them)
+and returns one entry per down run:
+
+```ts
+import { incidentHistory } from "@kasap/panel-uptime-dashboard";
+
+const incidents = incidentHistory([
+  { up: true, checkedAt: "2026-09-08T10:00:00.000Z" },
+  { up: false, checkedAt: "2026-09-08T10:01:00.000Z" },
+  { up: false, checkedAt: "2026-09-08T10:02:00.000Z" },
+  { up: true, checkedAt: "2026-09-08T10:03:00.000Z" },
+  { up: false, checkedAt: "2026-09-08T10:04:00.000Z" }, // still down as of the last check
+]);
+
+// [
+//   {
+//     startedAt: "2026-09-08T10:01:00.000Z",
+//     endedAt: "2026-09-08T10:03:00.000Z",
+//     durationMs: 120000,
+//     downChecks: 2
+//   },
+//   {
+//     startedAt: "2026-09-08T10:04:00.000Z",
+//     endedAt: null,        // ongoing — target was still down at the last check
+//     durationMs: null,      // no known end, so no duration to report
+//     downChecks: 1
+//   }
+// ]
+```
+
+An incident's `endedAt` is the timestamp of the check that confirmed recovery (the
+first `up` check after the down run). If history ends while the target is still down,
+the last incident is returned with `endedAt: null` and `durationMs: null` — it's
+ongoing, and a pure function has no business guessing "now" as a fake end time.
+
+This is also wired into the dashboard server as `GET /api/incidents?target=<name>`:
+
+```sh
+curl "http://localhost:3000/api/incidents?target=cpanel-web1"
+```
+
+Returns `400` if `target` is missing, `404` if it isn't a configured target, otherwise
+`200` with the JSON array of incidents described above (using the same `HISTORY_LIMIT`
+window as `/api/status`).
+
 ## Data storage
 
 Check history is stored in a SQLite file at `UPTIME_DB_PATH` (default `./data/uptime.sqlite`,

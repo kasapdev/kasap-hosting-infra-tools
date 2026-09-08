@@ -1,8 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { uptimePercent, sparkline, currentStatus, type CheckRecord } from "../src/aggregate.js";
+import {
+  uptimePercent,
+  sparkline,
+  currentStatus,
+  incidentHistory,
+  type CheckRecord,
+  type TimestampedCheckRecord,
+} from "../src/aggregate.js";
 
 const up = (responseTimeMs: number): CheckRecord => ({ up: true, responseTimeMs });
 const down = (): CheckRecord => ({ up: false });
+
+// Fixed base instant + a minute-per-check helper so incident tests get real,
+// strictly increasing timestamps without hardcoding ISO strings everywhere.
+const BASE_MS = Date.parse("2026-01-01T00:00:00.000Z");
+const at = (minutesFromBase: number): string => new Date(BASE_MS + minutesFromBase * 60_000).toISOString();
+
+const upAt = (minutesFromBase: number): TimestampedCheckRecord => ({ up: true, checkedAt: at(minutesFromBase) });
+const downAt = (minutesFromBase: number): TimestampedCheckRecord => ({ up: false, checkedAt: at(minutesFromBase) });
 
 describe("uptimePercent", () => {
   it("returns null for an empty array", () => {
@@ -89,5 +104,61 @@ describe("sparkline", () => {
     expect(result[0]).toBe("▁");
     expect(result[1]).toBe("▁");
     expect(result[2]).toBe("█");
+  });
+});
+
+describe("incidentHistory", () => {
+  it("returns an empty array for an empty history", () => {
+    expect(incidentHistory([])).toEqual([]);
+  });
+
+  it("returns no incidents when every check is up", () => {
+    expect(incidentHistory([upAt(0), upAt(1), upAt(2)])).toEqual([]);
+  });
+
+  it("treats a single down check as one ongoing incident", () => {
+    const incidents = incidentHistory([downAt(0)]);
+    expect(incidents).toEqual([{ startedAt: at(0), endedAt: null, durationMs: null, downChecks: 1 }]);
+  });
+
+  it("treats a single up check as no incidents", () => {
+    expect(incidentHistory([upAt(0)])).toEqual([]);
+  });
+
+  it("closes an incident at the recovery (first up) check and reports its duration", () => {
+    const incidents = incidentHistory([upAt(0), downAt(1), downAt(2), downAt(3), upAt(4)]);
+    expect(incidents).toEqual([
+      { startedAt: at(1), endedAt: at(4), durationMs: 3 * 60_000, downChecks: 3 },
+    ]);
+  });
+
+  it("treats an entire all-down history as one ongoing incident starting at the first check", () => {
+    const incidents = incidentHistory([downAt(0), downAt(1), downAt(2)]);
+    expect(incidents).toEqual([{ startedAt: at(0), endedAt: null, durationMs: null, downChecks: 3 }]);
+  });
+
+  it("reports an incident still open at the end of history as ongoing (endedAt/durationMs null)", () => {
+    const incidents = incidentHistory([upAt(0), downAt(1), downAt(2)]);
+    expect(incidents).toEqual([{ startedAt: at(1), endedAt: null, durationMs: null, downChecks: 2 }]);
+  });
+
+  it("splits two down runs separated by an up check into two discrete, non-overlapping incidents", () => {
+    const incidents = incidentHistory([downAt(0), upAt(1), downAt(2), downAt(3), upAt(4)]);
+    expect(incidents).toHaveLength(2);
+    expect(incidents[0]).toEqual({ startedAt: at(0), endedAt: at(1), durationMs: 60_000, downChecks: 1 });
+    expect(incidents[1]).toEqual({ startedAt: at(2), endedAt: at(4), durationMs: 2 * 60_000, downChecks: 2 });
+  });
+
+  it("merges adjacent down checks (no up check between them) into a single incident, never double-counting", () => {
+    // Two separate down "runs" with nothing but more down checks between them must
+    // collapse into one incident, not one-per-down-check.
+    const incidents = incidentHistory([downAt(0), downAt(1), downAt(2), downAt(3)]);
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]?.downChecks).toBe(4);
+  });
+
+  it("returns incidents oldest-first, matching the input ordering convention", () => {
+    const incidents = incidentHistory([downAt(0), upAt(1), downAt(2), upAt(3), downAt(4), upAt(5)]);
+    expect(incidents.map((incident) => incident.startedAt)).toEqual([at(0), at(2), at(4)]);
   });
 });

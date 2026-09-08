@@ -27,6 +27,74 @@ export function currentStatus(checks: CheckRecord[]): "up" | "down" | "unknown" 
   return last.up ? "up" : "down";
 }
 
+/** A `CheckRecord` with a timestamp, required for incident calculation (need real instants to measure duration). */
+export type TimestampedCheckRecord = CheckRecord & { checkedAt: string };
+
+export interface Incident {
+  /** Timestamp of the first down check in the run. */
+  startedAt: string;
+  /**
+   * Timestamp of the check that confirmed recovery (the first `up` check after the
+   * down run). `null` when the target is still down as of the last check in the
+   * supplied history — an "ongoing" incident with no known end yet.
+   */
+  endedAt: string | null;
+  /**
+   * `endedAt - startedAt` in milliseconds. `null` for an ongoing incident, since
+   * there's no end instant to measure against (this is a pure function — it never
+   * substitutes "now" for a missing end).
+   */
+  durationMs: number | null;
+  /** Number of consecutive down checks that make up this incident. */
+  downChecks: number;
+}
+
+/**
+ * Groups a run of consecutive `up: false` checks into a single incident, oldest-first.
+ * A new incident starts at the first down check after an up check (or at the start of
+ * history); it closes at the next up check, whose timestamp becomes `endedAt`. If the
+ * history ends while still down, the last incident is returned with `endedAt: null` and
+ * `durationMs: null` (ongoing/unresolved — matches `currentStatus`'s "down" reading).
+ *
+ * Requires `checkedAt` on every record (unlike the other aggregate functions) because
+ * duration is meaningless without real timestamps.
+ */
+export function incidentHistory(checks: TimestampedCheckRecord[]): Incident[] {
+  const incidents: Incident[] = [];
+  let open: { startedAt: string; downChecks: number } | null = null;
+
+  for (const check of checks) {
+    if (!check.up) {
+      if (open === null) {
+        open = { startedAt: check.checkedAt, downChecks: 0 };
+      }
+      open.downChecks += 1;
+      continue;
+    }
+
+    if (open !== null) {
+      incidents.push({
+        startedAt: open.startedAt,
+        endedAt: check.checkedAt,
+        durationMs: new Date(check.checkedAt).getTime() - new Date(open.startedAt).getTime(),
+        downChecks: open.downChecks,
+      });
+      open = null;
+    }
+  }
+
+  if (open !== null) {
+    incidents.push({
+      startedAt: open.startedAt,
+      endedAt: null,
+      durationMs: null,
+      downChecks: open.downChecks,
+    });
+  }
+
+  return incidents;
+}
+
 // Down checks always render as this marker, distinct from any "up" response-time bucket.
 const DOWN_CHAR = "_";
 

@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 2026-09-08
+
+### Added
+
+- `packages/panel-uptime-dashboard` (0.1.0 → 0.2.0): new `incidentHistory()`
+  aggregate function in `src/aggregate.ts` — groups a target's check history
+  into discrete incidents (contiguous down runs), each with `startedAt`,
+  `endedAt`, `durationMs`, and `downChecks`. An incident still down at the end
+  of the supplied history is reported as ongoing (`endedAt`/`durationMs: null`)
+  rather than guessing an end time. Wired into the dashboard server as a new
+  `GET /api/incidents?target=<name>` route (`400` for a missing `target`,
+  `404` for an unconfigured one). Documented with a runnable example in the
+  package README under a new "Incident history" section.
+- `packages/panel-uptime-dashboard`: 15 new tests — `incidentHistory` covering
+  empty history, all-up, all-down, a single up/down check, a closed incident
+  with correct duration, an incident still ongoing at the end of history,
+  two incidents separated by a recovery check, adjacent down checks merging
+  into one incident (never double-counted), and incident ordering; plus
+  `server.ts` coverage for the new `/api/incidents` route and for a
+  previously-untested gap — a configured target with zero recorded checks
+  (confirmed `computeStatuses` already returns `unknown`/`null` correctly for
+  it, and that `/index.html` serves the same page as `/`).
+
+### Changed
+
+- `packages/panel-uptime-dashboard`: bumped to `0.2.0` (minor) for the new
+  `incidentHistory` feature and `/api/incidents` endpoint.
+
 ## 2026-09-06
 
 ### Added

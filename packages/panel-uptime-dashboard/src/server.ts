@@ -2,7 +2,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import type { DatabaseSync } from "node:sqlite";
 import type { Target } from "./config.js";
 import { getRecentChecks } from "./store.js";
-import { uptimePercent, sparkline, currentStatus, type CheckRecord } from "./aggregate.js";
+import { uptimePercent, sparkline, currentStatus, incidentHistory, type CheckRecord, type Incident } from "./aggregate.js";
 
 export interface TargetStatus {
   name: string;
@@ -35,6 +35,18 @@ export function computeStatuses(db: DatabaseSync, targets: Target[]): TargetStat
       lastCheckedAt: last?.checkedAt ?? null,
     };
   });
+}
+
+/**
+ * Builds the discrete incident history (down runs, oldest-first) for one target from
+ * stored check history. Returns `null` when `targetName` isn't one of the configured
+ * `targets` (used by the route handler to tell "unknown target" apart from "no incidents").
+ */
+export function computeIncidents(db: DatabaseSync, targets: Target[], targetName: string): Incident[] | null {
+  if (!targets.some((target) => target.name === targetName)) return null;
+
+  const rows = getRecentChecks(db, targetName, HISTORY_LIMIT);
+  return incidentHistory(rows.map((row) => ({ up: row.up, responseTimeMs: row.responseTimeMs, checkedAt: row.checkedAt })));
 }
 
 function renderPage(): string {
@@ -144,6 +156,26 @@ export function createServer(db: DatabaseSync, targets: Target[]): Server {
       const statuses = computeStatuses(db, targets);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(statuses));
+      return;
+    }
+
+    if (url.startsWith("/api/incidents")) {
+      const targetName = new URL(url, "http://localhost").searchParams.get("target");
+      if (!targetName) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "target sorgu parametresi zorunlu, ör. /api/incidents?target=web1" }));
+        return;
+      }
+
+      const incidents = computeIncidents(db, targets, targetName);
+      if (incidents === null) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: `bilinmeyen hedef: ${targetName}` }));
+        return;
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(incidents));
       return;
     }
 
